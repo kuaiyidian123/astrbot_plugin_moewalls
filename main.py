@@ -54,6 +54,7 @@ HEADERS = {
 DEFAULT_CONFIG = {
     "max_results": 12,
     "translate_keyword": True,
+    "translate_titles": True,
     "show_size": True,
     "translate_provider": "",
     "search_cache_expire_minutes": 10,
@@ -225,6 +226,35 @@ class MoewallsPlugin(Star):
         except Exception as e:
             logger.warning(f"关键词翻译失败，使用原始关键词: {e}")
         return keyword
+
+    async def _translate_titles(self, titles: List[str]) -> List[str]:
+        """批量把英文标题翻译成中文；失败或解析异常时按条目回退英文原标题"""
+        if not titles or not self.config.get("translate_titles", True):
+            return list(titles)
+        prov = await self._resolve_provider()
+        if prov is None:
+            logger.warning("没有可用的对话模型，预览图标题使用英文")
+            return list(titles)
+        prompt = "\n".join(f"{i + 1}. {t}" for i, t in enumerate(titles))
+        try:
+            resp = await prov.text_chat(
+                prompt=prompt, system_prompt=_TRANSLATE_TITLE_PROMPT
+            )
+            raw = str(getattr(resp, "completion_text", "") or "")
+        except Exception as e:
+            logger.warning(f"标题翻译失败，使用英文标题: {e}")
+            return list(titles)
+
+        mapping: Dict[int, str] = {}
+        for m in re.finditer(r"^\s*(\d{1,3})\s*[.、)．]\s*(.+?)\s*$", raw, re.M):
+            idx = int(m.group(1))
+            text = m.group(2).strip().strip("\"'“”")
+            if 1 <= idx <= len(titles) and text:
+                mapping[idx] = text
+        if not mapping:
+            logger.warning(f"标题翻译结果解析失败，使用英文标题: {raw[:150]}")
+            return list(titles)
+        return [mapping.get(i + 1, t) for i, t in enumerate(titles)]
 
     # ==================== 搜索 ====================
 
