@@ -2,6 +2,7 @@ name: astrbot_plugin_moewalls
 display_name: 动态壁纸搜索
 version: 1.0.0
 author: kuaiyidian123
+repo: https://github.com/kuaiyidian123/astrbot_plugin_moewalls
 desc: |
   从 moewalls.com 搜索动态壁纸（Live Wallpaper）。
 

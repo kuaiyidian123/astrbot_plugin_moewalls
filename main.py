@@ -101,7 +101,7 @@ _TRANSLATE_TITLE_PROMPT = (
     "kuaiyidian123",
     "moewalls.com 动态壁纸搜索插件：/搜壁纸 关键词 返回带序号的预览图，回复 /序号 下载对应视频",
     "1.0.0",
-    "",
+    "https://github.com/kuaiyidian123/astrbot_plugin_moewalls",
 )
 class MoewallsPlugin(Star):
     """moewalls.com 动态壁纸插件"""
