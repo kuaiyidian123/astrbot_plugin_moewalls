@@ -18,6 +18,7 @@ TITLE_BG = (36, 39, 48)
 TEXT_COLOR = (235, 238, 245)
 BADGE_BG = (222, 58, 58)
 BADGE_TEXT = (255, 255, 255)
+SIZE_COLOR = (255, 205, 100)
 
 # 按优先级尝试的系统字体（Windows / macOS / Linux 常见路径）
 _FONT_CANDIDATES = (
@@ -85,6 +86,18 @@ def _fit_title(text: str, font, max_w: int, draw: ImageDraw.ImageDraw) -> str:
         return text[:32] + ("…" if len(text) > 32 else "")
 
 
+def _format_size(num_bytes) -> str:
+    """把字节数格式化成可读体积；未知或非法时返回空串"""
+    try:
+        n = int(num_bytes)
+    except (TypeError, ValueError):
+        return ""
+    if n <= 0:
+        return ""
+    mb = n / 1048576
+    return f"{mb:.0f} MB" if mb >= 100 else f"{mb:.1f} MB"
+
+
 def draw_search_result_image(
     items: List[Dict],
     out_path: str,
@@ -110,6 +123,7 @@ def draw_search_result_image(
     draw = ImageDraw.Draw(canvas)
     num_font = _load_font(30)
     title_font = _load_font(21, prefer_cjk=True)
+    size_font = _load_font(17, prefer_cjk=True)
 
     for i, item in enumerate(valid):
         row, col = divmod(i, cols)
@@ -137,15 +151,34 @@ def draw_search_result_image(
         )
         draw.text((x + 6 + pad - ox, y + 6 + pad - oy), label, font=num_font, fill=BADGE_TEXT)
 
-        # 底部标题条
+        # 底部标题条：左侧标题，右侧视频体积
         draw.rectangle([x, y + THUMB_H, x + THUMB_W, y + THUMB_H + TITLE_H], fill=TITLE_BG)
-        title = _fit_title(item.get("title", ""), title_font, THUMB_W - 16, draw)
+        size_text = _format_size(item.get("size"))
+        size_w = 0
+        if size_text:
+            try:
+                size_w = int(draw.textlength(size_text, font=size_font))
+            except Exception:
+                size_w = 0
+        reserve = size_w + 12 if size_w else 0
+        title = _fit_title(
+            item.get("title", ""), title_font, max(40, THUMB_W - 16 - reserve), draw
+        )
         try:
             tb = draw.textbbox((0, 0), title, font=title_font)
             ty = y + THUMB_H + (TITLE_H - (tb[3] - tb[1])) // 2 - tb[1]
         except Exception:
             ty = y + THUMB_H + 11
         draw.text((x + 8, ty), title, font=title_font, fill=TEXT_COLOR)
+        if size_text and size_w:
+            try:
+                sb = draw.textbbox((0, 0), size_text, font=size_font)
+                sy = y + THUMB_H + (TITLE_H - (sb[3] - sb[1])) // 2 - sb[1]
+            except Exception:
+                sy = y + THUMB_H + 13
+            draw.text(
+                (x + THUMB_W - 8 - size_w, sy), size_text, font=size_font, fill=SIZE_COLOR
+            )
 
     canvas.save(out_path, "JPEG", quality=92)
     return out_path

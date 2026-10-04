@@ -54,6 +54,7 @@ HEADERS = {
 DEFAULT_CONFIG = {
     "max_results": 12,
     "translate_keyword": True,
+    "show_size": True,
     "translate_provider": "",
     "search_cache_expire_minutes": 10,
     "max_video_size_mb": 200,
@@ -324,6 +325,13 @@ class MoewallsPlugin(Star):
             logger.warning(f"预检视频体积失败: {e}")
             return None
 
+    async def _fetch_size(self, detail_url: str) -> Optional[int]:
+        """获取某个壁纸的视频体积（字节）：详情页取 token 后 HEAD 预检，失败返回 None"""
+        download_url, err = await self._resolve_download_url(detail_url)
+        if err:
+            return None
+        return await self._probe_size(download_url)
+
     async def _download_video(
         self, url: str, filename: str, progress: Optional[asyncio.Queue] = None
     ):
@@ -464,7 +472,7 @@ class MoewallsPlugin(Star):
             )
             return
 
-        yield event.plain_result(f"🔍 正在搜索「{keyword}」，请稍候...")
+        yield event.plain_result(f"🔍 正在搜索「{keyword}」并获取壁纸信息，请稍候...")
 
         search_keyword = await self._translate_keyword(keyword)
         limit = int(self.config["max_results"])
@@ -481,18 +489,33 @@ class MoewallsPlugin(Star):
             "keyword": keyword,
         }
 
-        # 并发：批量翻译标题（用于预览图）+ 下载缩略图
-        cn_titles, thumbs = await asyncio.gather(
+        # 并发：批量翻译标题 + 下载缩略图 +（可选）探测每个壁纸的视频体积
+        gather_list = [
             self._translate_titles([it["title"] for it in items]),
             asyncio.gather(
                 *[self._fetch_bytes(it["thumb"], 4 * 1024 * 1024) for it in items]
             ),
-        )
+        ]
+        if self.config.get("show_size", True):
+            gather_list.append(
+                asyncio.gather(*[self._fetch_size(it["url"]) for it in items])
+            )
+        results = await asyncio.gather(*gather_list)
+        cn_titles = results[0]
+        thumbs = results[1]
+        sizes = results[2] if len(results) > 2 else []
+
         rendered = []
         for i, data in enumerate(thumbs):
             if data:
                 title = cn_titles[i] if i < len(cn_titles) else items[i]["title"]
-                rendered.append({"title": title, "thumb": data})
+                rendered.append(
+                    {
+                        "title": title,
+                        "thumb": data,
+                        "size": sizes[i] if i < len(sizes) else None,
+                    }
+                )
 
         if not rendered:
             yield event.plain_result("😔 缩略图下载失败，请稍后重试")
