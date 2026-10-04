@@ -411,9 +411,22 @@ class MoewallsPlugin(Star):
             logger.warning(f"删除临时文件失败 {path}: {e}")
 
     async def _cleanup_later(self, path: str, delay: int):
-        """发送完成后延迟清理临时文件，避免机器人读取文件时被删"""
-        await asyncio.sleep(max(30, int(delay)))
+        """清理临时文件；delay <= 0 表示立即删除"""
+        if delay > 0:
+            await asyncio.sleep(delay)
         self._remove_quietly(path)
+
+    def _purge_temp_dir(self):
+        """启动时清空临时目录，避免上次运行残留的文件继续占用磁盘"""
+        try:
+            for name in os.listdir(self.temp_dir):
+                path = os.path.join(self.temp_dir, name)
+                if os.path.isfile(path):
+                    self._remove_quietly(path)
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            logger.warning(f"清理临时目录失败: {e}")
 
     @staticmethod
     def _cache_key(event: AstrMessageEvent) -> str:
@@ -590,7 +603,12 @@ class MoewallsPlugin(Star):
         yield event.plain_result(
             f"✅ 下载完成（{os.path.getsize(path) / 1048576:.1f}MB），正在发送视频..."
         )
-        yield event.chain_result([Video(file=path)])
-        asyncio.create_task(
-            self._cleanup_later(path, int(self.config["temp_cleanup_seconds"]))
-        )
+        delay = int(self.config["temp_cleanup_seconds"])
+        try:
+            yield event.chain_result([Video(file=path)])
+        finally:
+            # 发送完成后清理；默认 0 = 立即删除，不在本地保留
+            if delay <= 0:
+                self._remove_quietly(path)
+            else:
+                asyncio.create_task(self._cleanup_later(path, delay))

@@ -68,9 +68,9 @@
   "temp_cleanup_seconds": {
     "type": "int",
     "title": "临时视频清理延迟（秒）",
-    "default": 180,
-    "minimum": 30,
+    "default": 0,
+    "minimum": 0,
     "maximum": 3600,
-    "description": "壁纸视频发送成功后，延迟多久删除本地临时文件，避免占用磁盘。"
+    "description": "壁纸视频发送完成后延迟多久删除本地临时文件。0（默认）= 发送完立即删除，不在本地保留；若你的协议端上传大文件较慢、删除过早导致发送失败，可适当调大（如 30）。"
   }
 }
