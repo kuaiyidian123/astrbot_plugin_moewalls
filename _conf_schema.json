@@ -1,0 +1,76 @@
+{
+  "max_results": {
+    "type": "int",
+    "title": "搜索结果数量上限",
+    "default": 12,
+    "minimum": 1,
+    "maximum": 40,
+    "description": "每次 /搜壁纸 返回的壁纸数量上限，默认 12，可填 1~40。数值越大，合成预览图越慢、图片越大。"
+  },
+  "translate_keyword": {
+    "type": "bool",
+    "title": "把中文关键词翻译成英文",
+    "default": true,
+    "description": "开启后，/搜壁纸 的中文关键词会先交给 AstrBot 的对话模型翻译成英文再搜索（该站点只收录英文标题）。关闭则原样搜索，或直接输入英文关键词。"
+  },
+  "translate_titles": {
+    "type": "bool",
+    "title": "预览图标题显示中文",
+    "default": true,
+    "description": "开启后，搜索结果预览图里每张壁纸的标题会用对话模型翻译成简体中文再绘制（该站点标题为英文）。关闭则直接显示英文原题。翻译失败时对应的条目自动回退英文。"
+  },
+  "translate_provider": {
+    "type": "string",
+    "title": "关键词翻译用的对话模型 ID",
+    "default": "",
+    "description": "留空表示使用 AstrBot 当前默认对话模型。若填入的模型 ID 不存在会自动回退到默认模型。"
+  },
+  "search_cache_expire_minutes": {
+    "type": "int",
+    "title": "搜索结果缓存有效期（分钟）",
+    "default": 10,
+    "minimum": 1,
+    "maximum": 120,
+    "description": "搜索结果缓存有效期。用户搜索后需要在有效期内回复 /序号 才能下载，过期后需重新搜索。"
+  },
+  "max_video_size_mb": {
+    "type": "int",
+    "title": "单个壁纸视频体积上限（MB）",
+    "default": 200,
+    "minimum": 1,
+    "maximum": 2000,
+    "description": "单次下载的壁纸视频体积上限，超过则取消下载并提示。用于避免异常响应占用过多磁盘与带宽。"
+  },
+  "request_timeout": {
+    "type": "int",
+    "title": "网页请求超时（秒）",
+    "default": 30,
+    "minimum": 5,
+    "maximum": 120,
+    "description": "搜索页与详情页的请求超时时间。"
+  },
+  "download_timeout": {
+    "type": "int",
+    "title": "视频下载超时（秒）",
+    "default": 300,
+    "minimum": 30,
+    "maximum": 1800,
+    "description": "下载壁纸视频的整体超时时间。该站点的壁纸视频较大（常见 10~80MB），网络较慢时请调大。"
+  },
+  "preview_cols": {
+    "type": "int",
+    "title": "预览图每行显示数量",
+    "default": 4,
+    "minimum": 2,
+    "maximum": 6,
+    "description": "搜索结果预览图每行排布几个缩略图，默认 4。"
+  },
+  "temp_cleanup_seconds": {
+    "type": "int",
+    "title": "临时视频清理延迟（秒）",
+    "default": 180,
+    "minimum": 30,
+    "maximum": 3600,
+    "description": "壁纸视频发送成功后，延迟多久删除本地临时文件，避免占用磁盘。"
+  }
+}

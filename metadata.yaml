@@ -1,0 +1,17 @@
+name: astrbot_plugin_moewalls
+display_name: 动态壁纸搜索
+version: 1.0.0
+author: kuaiyidian123
+desc: |
+  从 moewalls.com 搜索动态壁纸（Live Wallpaper）。
+
+  ## 功能说明
+  - 🔍 发送 /搜壁纸 关键词，自动把中文关键词翻译成英文后到 moewalls.com 搜索
+  - 🖼️ 返回带序号的壁纸预览图（每张图对应一个搜索结果）
+  - ⬇️ 回复 /序号（例如 /1）即可下载对应动态壁纸的完整视频并发送到聊天
+  - 🆘 发送 /壁纸帮助 查看用法
+
+  ## 说明
+  - 壁纸视频为 mp4 格式，体积通常在 5~30MB，请留意机器人所在网络的带宽与磁盘占用
+  - 本插件仅做轻量搜索与单次下载，请勿用于批量采集
+astrbot_version: '>=4.17.0'
