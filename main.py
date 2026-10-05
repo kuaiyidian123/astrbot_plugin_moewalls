@@ -62,7 +62,7 @@ DEFAULT_CONFIG = {
     "request_timeout": 30,
     "download_timeout": 300,
     "preview_cols": 4,
-    "temp_cleanup_seconds": 180,
+    "temp_cleanup_seconds": 0,
 }
 
 # 搜索结果里每个 article 块
@@ -123,6 +123,7 @@ class MoewallsPlugin(Star):
         self.data_dir = data_dir
         self.temp_dir = os.path.join(data_dir, "temp")
         os.makedirs(self.temp_dir, exist_ok=True)
+        self._purge_temp_dir()
 
         # 搜索结果缓存：key -> {"items": [...], "expire": ts, "keyword": str}
         self.search_cache: Dict[str, Dict[str, Any]] = {}
@@ -398,7 +399,7 @@ class MoewallsPlugin(Star):
                     )
                 total = int(resp.content_length) if resp.content_length else 0
                 # 有总大小时每 20% 报一次，否则每 8MB 报一次
-                step = total // 5 if total else 8 * 1024 * 1024
+                step = max(total // 5, 1024 * 1024) if total else 8 * 1024 * 1024
                 with open(path, "wb") as f:
                     async for chunk in resp.content.iter_chunked(128 * 1024):
                         written += len(chunk)
@@ -511,14 +512,6 @@ class MoewallsPlugin(Star):
             yield event.plain_result(f"😔 {err}")
             return
 
-        # 缓存搜索结果（按会话 + 用户隔离）
-        self._prune_cache()
-        self.search_cache[self._cache_key(event)] = {
-            "items": items,
-            "expire": time.time() + int(self.config["search_cache_expire_minutes"]) * 60,
-            "keyword": keyword,
-        }
-
         # 并发：批量翻译标题 + 下载缩略图 +（可选）探测每个壁纸的视频体积
         gather_list = [
             self._translate_titles([it["title"] for it in items]),
@@ -535,23 +528,39 @@ class MoewallsPlugin(Star):
         thumbs = results[1]
         sizes = results[2] if len(results) > 2 else []
 
+        # 缩略图失败的条目直接跳过，并保证「预览图序号」与「可下载列表」严格一一对应，
+        # 否则中间的失败项会让序号错位，用户选号会下到别的壁纸
         rendered = []
+        usable = []
         for i, data in enumerate(thumbs):
-            if data:
-                title = cn_titles[i] if i < len(cn_titles) else items[i]["title"]
-                rendered.append(
-                    {
-                        "title": title,
-                        "thumb": data,
-                        "size": sizes[i] if i < len(sizes) else None,
-                    }
-                )
+            if not data:
+                continue
+            item = dict(items[i])
+            item["size"] = sizes[i] if i < len(sizes) else None
+            usable.append(item)
+            rendered.append(
+                {
+                    "title": cn_titles[i] if i < len(cn_titles) else item["title"],
+                    "thumb": data,
+                    "size": item["size"],
+                }
+            )
 
         if not rendered:
             yield event.plain_result("😔 缩略图下载失败，请稍后重试")
             return
 
-        out_path = os.path.join(self.temp_dir, f"moewalls_search_{int(time.time())}.jpg")
+        # 缓存可下载结果（按会话 + 用户隔离），序号与预览图一致
+        self._prune_cache()
+        self.search_cache[self._cache_key(event)] = {
+            "items": usable,
+            "expire": time.time() + int(self.config["search_cache_expire_minutes"]) * 60,
+            "keyword": keyword,
+        }
+
+        out_path = os.path.join(
+            self.temp_dir, f"moewalls_search_{time.time_ns()}.jpg"
+        )
         try:
             image_path = await asyncio.to_thread(
                 draw_search_result_image,
@@ -567,12 +576,16 @@ class MoewallsPlugin(Star):
             yield event.plain_result("😔 预览图生成失败，请稍后重试")
             return
 
-        tip = f"共找到 {len(items)} 个结果，回复 /序号（1-{len(items)}）下载对应动态壁纸"
+        total = len(usable)
+        tip = f"共找到 {total} 个结果，回复 /序号（1-{total}）下载对应动态壁纸"
         if search_keyword != keyword:
             tip = f"（已翻译为「{search_keyword}」搜索）\n" + tip
-        yield event.image_result(image_path)
+        try:
+            yield event.image_result(image_path)
+        finally:
+            # 预览图发送后立即删除，不在本地保留
+            self._remove_quietly(image_path)
         yield event.plain_result(tip)
-        asyncio.create_task(self._cleanup_later(image_path, 120))
 
     @filter.command("壁纸帮助")
     async def cmd_help(self, event: AstrMessageEvent):
@@ -596,7 +609,10 @@ class MoewallsPlugin(Star):
         self._prune_cache()
         entry = self.search_cache.get(self._cache_key(event))
         if not entry:
-            yield event.plain_result("请先发送 /搜壁纸 关键词 进行搜索")
+            # 裸数字静默跳过，避免和其它插件的数字选号指令互相干扰；
+            # 显式带 / 前缀时才提示用法
+            if m.group(0).startswith("/"):
+                yield event.plain_result("请先发送 /搜壁纸 关键词 进行搜索")
             return
 
         items = entry["items"]
@@ -612,9 +628,9 @@ class MoewallsPlugin(Star):
             yield event.plain_result(f"❌ {err}")
             return
 
-        # 先预检体积：让用户对等待时间有预期，也提前拦住超大文件
+        # 体积优先复用搜索阶段探测到的结果，避免重复请求；下载时还会再校验一次
         max_bytes = int(self.config["max_video_size_mb"]) * 1024 * 1024
-        size = await self._probe_size(download_url)
+        size = item.get("size")
         if size and size > max_bytes:
             yield event.plain_result(
                 f"❌ 该壁纸约 {size / 1048576:.1f}MB，超过上限 "
@@ -628,7 +644,7 @@ class MoewallsPlugin(Star):
         else:
             yield event.plain_result(f"⬇️ 正在下载「{item['title']}」，请稍候...")
 
-        filename = f"moewalls_{int(time.time())}_{index}.mp4"
+        filename = f"moewalls_{time.time_ns()}_{index}.mp4"
         progress: asyncio.Queue = asyncio.Queue()
         task = asyncio.create_task(
             self._download_video(download_url, filename, progress)
